@@ -1,4 +1,5 @@
-﻿#include "ThreadPool.h"
+#include "ThreadPool.h"
+#include <stdexcept>
 
 namespace utils {
 thread_local string ThreadPool::_threadName = "main";
@@ -7,9 +8,10 @@ ThreadPool::ThreadPool(string threadPrefix, uint32_t maxQueueSize,
                        int minThreads, int maxThreads)
     : _threadPrefix(threadPrefix), _maxQueueSize(maxQueueSize),
       _stopThreads(false), _minThreads(minThreads), _maxThreads(maxThreads),
-      _currId(0) {
+      _currId(0), _freeThreads(0) {
   if (_minThreads < 1 || _minThreads > _maxThreads || _maxThreads < 1) {
-    throw exception("Please set min threads and max thread in right range!");
+    throw invalid_argument(
+        "Please set min threads and max thread in right range!");
   }
   for (int i = 0; i < minThreads; ++i) {
     CreateThread(++_currId);
@@ -23,11 +25,13 @@ void ThreadPool::CreateThread(int id) {
 
     while (true) {
       queue_lock.lock();
+      _freeThreads++;
       _taskCv.wait_for(queue_lock, 500ms, [&]() -> bool {
         return !_tasks.empty() || _stopThreads;
       });
 
       if (_tasks.empty()) {
+        _freeThreads--;
         queue_lock.unlock();
         std::unique_lock<std::mutex> thread_lock(_threadMutex);
         if (_mapThread.size() > _minThreads || _stopThreads) {
@@ -39,6 +43,7 @@ void ThreadPool::CreateThread(int id) {
 
       auto temp_task = std::move(_tasks.front());
       _tasks.pop();
+      _freeThreads--;
       queue_lock.unlock();
 
       (*temp_task)();
