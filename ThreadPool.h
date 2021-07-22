@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <condition_variable>
 #include <future>
@@ -40,6 +40,7 @@ public:
   int GetMinThreads() { return _minThreads; }
   int GetMaxThreads() { return _maxThreads; }
   int GetCurrId() { return _currId; }
+  int GetFreeThreads() { return _freeThreads; }
 
 private:
   class _task_container_base {
@@ -79,6 +80,7 @@ private:
   int _minThreads;
   int _maxThreads;
   atomic_int32_t _currId;
+  int _freeThreads;
 };
 
 template <typename F, typename... Args>
@@ -97,7 +99,7 @@ auto ThreadPool::AddTask(F &&function, Args &&...args) {
   queue_lock.unlock();
   _taskCv.notify_one();
 
-  if (_mapThread.size() < _maxThreads && _tasks.size() > 1) {
+  if (_mapThread.size() < _maxThreads && _freeThreads <= 0) {
     CreateThread(++_currId);
   }
 
